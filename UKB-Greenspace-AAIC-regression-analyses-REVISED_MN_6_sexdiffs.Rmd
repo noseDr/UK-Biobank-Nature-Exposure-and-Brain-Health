@@ -609,31 +609,31 @@ library(dplyr)
 CogsBrainCov.df2<-CogsBrainCov.df %>%
   mutate(Age = scale(Age, scale=FALSE)/10,
          Sex = recode(Sex,
-                      "Female" ~ 0.5,
-                      "Male" ~ -0.5),
+                      "Female" = 0.5,
+                      "Male" = -0.5),
          BMI = scale(BMI, scale=FALSE)/5,
          Race = recode(Race,
-                       "White" ~ 0.5,
-                       "Mixed" ~ -0.5,
-                       "Black or Black British"~ -0.5,
-                       "Asian or Asian British"~ -0.5),
+                       "White" = 0.5,
+                       "Mixed" = -0.5,
+                       "Black or Black British"= -0.5,
+                       "Asian or Asian British"= -0.5),
          Income = as.numeric(factor(Income,
                                     levels = c("<18,000 GBP","18,000-30,999 GBP","31,000-51,999 GBP","52,000-100,000 GBP",">100,000 GBP"))),
          Disability = recode(Disability, 
-                             "Yes" ~ 1,
-                             "No" ~ 0),
+                             "Yes" = 1,
+                             "No" = 0),
          Diabetes = recode(Diabetes,
-                           "Yes" ~ 1,
-                           "No" ~ 0),
+                           "Yes" = 1,
+                           "No" = 0),
          CVD_problems = recode(CVD_problems,
-                               "Yes" ~ 1,
-                               "No" ~ 0),
+                               "Yes" = 1,
+                               "No" = 0),
          Cancer = recode(Cancer,
-                         "Yes" ~ 1,
-                         "No" ~ 0),
+                         "Yes" = 1,
+                         "No" = 0),
          Other_medical_conditions =  recode(Other_medical_conditions,
-                                            "Yes" ~ 1,
-                                            "No" ~ 0),
+                                            "Yes" = 1,
+                                            "No" = 0),
          Alcohol = as.numeric(factor(Alcohol,
                                      levels = c("Never","Previous drinker","Current drinker"))),
          Smoking = as.numeric(factor(Smoking,
@@ -657,8 +657,10 @@ detach(package:dplyr,unload=TRUE)
 Define function for regression model assumption checks
 ```{r}
 # Install package for Durbin-Watson test
-install.packages("lmtest")
+options(repos = c(CRAN = "https://cran.r-project.org"))
+install.packages(c("lmtest", "gvlma"))
 library("lmtest")
+library("gvlma")
 
 model_diagnostics <- function(model, bin_width=1) {
   # Residuals vs. Fitted plot for linearity, normality, equivariance
@@ -670,7 +672,7 @@ model_diagnostics <- function(model, bin_width=1) {
   hist(residuals(model), breaks = seq(floor(min(residuals(model))), ceiling(max(residuals(model))), by = bin_width))
   
   # Durbin-Watson test for independent errors
-  print(dwt(model))
+  print(dwtest(model))
   
   # Test skewness, kurtosis, equivariance
   gvlma(model)
@@ -904,7 +906,7 @@ summary(model8gm)
 confint(model8gm,"Natural_environment_1000m_10pcnt:Sex") #95% confidence interval
 ```
 
-Grey Matter Graph
+Grey Matter Graph (no error bars)
 ```{r}
 #stratify sample by sex
 CogsBrainCov.F <- subset(CogsBrainCov.df2,Sex==0.5)
@@ -926,13 +928,9 @@ Females.slope <- round(Females.reg.mean$coeff[2], digits = 3)
 Females.ci <- predict(Females.reg.mean, interval = "confidence", level = 0.95)
 
 ggplot() +
-    #add data points for females
-  geom_point(data = F.resid, aes(x = F.resid.nat, y = F.resid.gm), shape = 20, size = 0, color = "Red") +
-  #add data points for males
-  geom_point(data = M.resid, aes(x = M.resid.nat, y = M.resid.gm), shape = 3, size = 0, color = "Green") +
   #add data points but make colour white so invisible
   #(deleting the points also prevents regression lines from being visible)
-  #geom_point(data = CogsBrainCov.df2, aes(x = Natural_environment_pcnt_1000m, y = Grey_matter_volume_adjusted_T2_cm3), shape = 20, size = 0, color = "Sex") +
+  geom_point(data = CogsBrainCov.df2, aes(x = Natural_environment_pcnt_1000m, y = Grey_matter_volume_adjusted_T2_cm3), shape = 20, size = 0, color = "White") +
   #add regression lines for each sex
   geom_abline(aes(intercept= Males.b0, slope = Males.slope, color= "Males"), size = 1) + 
   geom_abline(aes(intercept = Females.b0, slope = Females.slope, color= "Females"), size = 1) +
@@ -1006,14 +1004,13 @@ new_data_F <- cbind(new_data_F, predictions_F)
 
 # Plot the data, regression line, and confidence intervals
 ggplot() +
-    geom_line(data = new_data_M, aes(x = Natural_environment_pcnt_1000m, y = fit), color = "Green") +
-    geom_line(data = new_data_F, aes(x = Natural_environment_pcnt_1000m, y = fit), color = "Orange") +
+    geom_line(data = new_data_M, aes(x = Natural_environment_pcnt_1000m, y = fit, color = "Males")) +
+    geom_line(data = new_data_F, aes(x = Natural_environment_pcnt_1000m, y = fit, color = "Females")) +
     geom_ribbon(data = new_data_M, aes(x = Natural_environment_pcnt_1000m, ymin = lwr, ymax = upr), alpha = 0.2, fill = "Green") +
     geom_ribbon(data = new_data_F, aes(x = Natural_environment_pcnt_1000m, ymin = lwr, ymax = upr), alpha = 0.2, fill = "Red") +
-    labs(x = "Natural Environment (%)",
-         y = "Grey Matter Volume Adjusted T2 (cm3)") + 
+    guides(color = guide_legend(title = "Sex")) +
+  labs(x = "Natural Environment (%)", y = "Grey Matter Volume (cm^3)", color =  "Sex") + 
     theme_classic() 
-#add legend
 ```
 
 Alternative Grey Matter Graph: Partial Regression Plot
@@ -1053,8 +1050,6 @@ ggplot() +
   #xlim(0,100) +
   #ylim(785,795) +
   theme_classic()
-
-#What is going wrong with these graphs? Why are the slopes so shallow? Why do the regression lines not extend for the full x range (0,100)? Why do the regression lines change when I change the y range?
 ```
 
 Alternative Grey Matter Graph: Partial Regression Plot #2
@@ -1098,7 +1093,6 @@ ggplot() +
   labs(x = "Natural Environment (%)", y = "Grey Matter Volume (cm^3)", color = "Sex") +
   #remove the fill colour from the legend symbols
   guides(color = guide_legend(override.aes = list(fill = NA))) +
-  #xlim(0,100) +
   coord_cartesian(xlim=c(0,96), ylim=c(765,815)) +
   theme_classic()
 
@@ -1111,11 +1105,13 @@ Grey matter: Sex-stratified subanalysis
 #repeat regression within each Sex (ensuring to remove Sex as covariate)
 #Males
 lmM <- lm(Grey_matter_volume_adjusted_T2_cm3 ~ Natural_environment_1000m_10pcnt + Summed_PA_min + Age + BMI + Education + Income + Average_time_outdoors + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.M)
-summary_confint(lmM)
+summary(lmM)
+confint(lmM,"Natural_environment_1000m_10pcnt")
 
 #Females
 lmF <- lm(Grey_matter_volume_adjusted_T2_cm3 ~ Natural_environment_1000m_10pcnt + Summed_PA_min + Age + BMI + Education + Income + Average_time_outdoors + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.F)
-summary_confint(lmF)
+summary(lmF)
+confint(lmF,"Natural_environment_1000m_10pcnt")
 
 #obtain beta coefficient and standard error for males and females
 F.beta <- summary(lmF)$coefficients["Natural_environment_1000m_10pcnt","Estimate"]
@@ -1519,7 +1515,7 @@ length(NoHomeChange_T2$ID)
 ```
 
 ### Compare the analytical cognitive+brain+covariate data set to the restricted data set with no change in home location
-```{r}
+```{r eval= FALSE}
 #use CogsBrainCov.df because variables (such as age, BMI, natural environment) are not yet re-scaled
 
 #convert dates to date data type
@@ -1537,20 +1533,20 @@ NoHomeChange_T2_unscaled$included<-"Participants with no change in home location
 
 AnalyticalVsNoHomeChange<-rbind(CogsBrainCov.df, NoHomeChange_T2_unscaled)
 
-vars2<-select(AnalyticalVsNoHomeChange,c(2:43, 53))
-# alternative: to exclude T3 from table:
-# vars <- Tableone.df %>% select(c(2:34,36,38,40,42))
+vars2<- subset(AnalyticalVsNoHomeChange, select = c(2:43, 53))
 
 vars2 %>% tbl_summary(
   statistic = list(all_continuous() ~ "{mean} ({sd})",
                    all_categorical() ~ "{n} ({p}%)"),
   digits = all_continuous() ~ 2,
-  by = included
+  by = "included"
 )
 ```
 
 Table for restricted sample with no change in home location, stratified by sex
-```{r}
+```{r eval= FALSE}
+library(dplyr)
+
 tbl_summary(
   select(NoHomeChange_T2_unscaled, c(2:43)),
   by = "Sex", 
