@@ -1,0 +1,2108 @@
+---
+title: "Association between nature exposure and brain health: cross-sectional results
+  from the UK Biobank Study"
+author: "Ryan Stanley Falck; Revised by Matt Noseworthy"
+date: "Revision 7: 2025-06-07"
+output: 
+    html_document:
+      toc: true
+      theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1) Initial set-up
+
+Load packages for the analysis using the "pacman" package
+```{r}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(boot,MASS,readxl,plyr,ggplot2,lme4,lmerTest,lsmeans,gtsummary,ggthemes,patchwork,modelsummary,psych,
+               lavaan,semTools,semPlot,expss)
+```
+
+Set the working directory (i.e., where the data are stored)
+```{r}
+setwd("~/Desktop/OneDrive - UBC/UK Biobank Greenspace Analysis")
+```
+
+Load the data set 
+* Notes: 
++ 1) This dataset has been reduced from the full UKB dataset to the primary variables of interest for this analysis.
+```{r}
+fulldata<-read.csv("UKB_Fulldata_Sept27_2023.csv") #Data#
+```
+
+
+# 2) Set-up variables for analysis
+
+Change sex to male vs. female
+```{r}
+fulldata$Sex[fulldata$Sex==1]<-"Male"
+fulldata$Sex[fulldata$Sex==0]<-"Female"
+```
+
+Assessment centre
+```{r}
+fulldata$Assessment_Centre<-NA
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11012]<-"Barts"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11021]<-"Birmingham"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11011]<-"Bristol"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11008]<-"Bury"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11003]<-"Cardiff"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11024]<-"Cheadle (revisit)"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11020]<-"Croydon"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11005]<-"Edinburgh"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11004]<-"Glasgow"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11018]<-"Hounslow"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11010]<-"Leeds"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11016]<-"Liverpool"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11001]<-"Manchester"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11017]<-"Middlesborough"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11009]<-"Newcastle"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11013]<-"Nottingham"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11002]<-"Oxford"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11007]<-"Reading"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11014]<-"Sheffield"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==10003]<-"Stockport (pilot)"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11006]<-"Stoke"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11022]<-"Swansea"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11023]<-"Wrexham"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11025]<-"Cheadle (imaging)"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11026]<-"Reading (imaging)"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11027]<-"Newcastle (imaging)"
+fulldata$Assessment_Centre[fulldata$Assessment.centre==11028]<-"Bristol (imaging)"
+```
+
+Length of time at current address (3 timepoints [T0, T2, T3])
+* Recorded in whole years. -10: less than a year; -1: do not know; -3: prefer not to answer
+```{r}
+fulldata$Time_at_current_address_T0 <- fulldata$Length.of.time.at.current.address.0
+fulldata$Time_at_current_address_T0[fulldata$Time_at_current_address_T0==-10] <- 0.5
+fulldata$Time_at_current_address_T0[fulldata$Time_at_current_address_T0==-1 | fulldata$Time_at_current_address_T0==-3] <- NA
+
+fulldata$Time_at_current_address_T2 <- fulldata$Length.of.time.at.current.address.2
+fulldata$Time_at_current_address_T2[fulldata$Time_at_current_address_T2==-10] <- 0.5
+fulldata$Time_at_current_address_T2[fulldata$Time_at_current_address_T2==-1 | fulldata$Time_at_current_address_T2==-3] <- NA
+
+fulldata$Time_at_current_address_T3 <- fulldata$Length.of.time.at.current.address.3
+fulldata$Time_at_current_address_T3[fulldata$Time_at_current_address_T3==-10] <- 0.5
+fulldata$Time_at_current_address_T3[fulldata$Time_at_current_address_T3==-1 | fulldata$Time_at_current_address_T3==-3] <- NA
+```
+
+Household Income
+```{r}
+fulldata$Income<-NA
+fulldata$Income[fulldata$Household.Income==1]<- "<18,000 GBP"
+fulldata$Income[fulldata$Household.Income==2]<- "18,000-30,999 GBP"
+fulldata$Income[fulldata$Household.Income==3]<- "31,000-51,999 GBP"
+fulldata$Income[fulldata$Household.Income==4]<- "52,000-100,000 GBP"
+fulldata$Income[fulldata$Household.Income==5]<- ">100,000 GBP"
+fulldata$Income[fulldata$Household.Income<=0]<- "Do not know or prefer not to answer"
+```
+
+
+Time spent outdoors (categorical variable)
+```{r}
+#Time spent outdoors in summer (categorical)
+fulldata$Time_outdoors_summer<-NA
+fulldata$Time_outdoors_summer[fulldata$Time.spent.outdoors.in.summer==0 | fulldata$Time.spent.outdoors.in.summer==-10]<-"Less than 1 hour/day"
+fulldata$Time_outdoors_summer[fulldata$Time.spent.outdoors.in.summer==-3 | fulldata$Time.spent.outdoors.in.summer==-1]<-"Do not know or prefer not to say"
+fulldata$Time_outdoors_summer[fulldata$Time.spent.outdoors.in.summer>=1 & fulldata$Time.spent.outdoors.in.summer<7]<-"1-6 hours/day"
+fulldata$Time_outdoors_summer[fulldata$Time.spent.outdoors.in.summer>=7 & fulldata$Time.spent.outdoors.in.summer<13]<-"7-12 hours/day"
+fulldata$Time_outdoors_summer[fulldata$Time.spent.outdoors.in.summer>=13]<-"13+ hours/day"
+
+#Time spent outdoors in winter (categorical)
+fulldata$Time_outdoors_winter<-NA
+fulldata$Time_outdoors_winter[fulldata$Time.spent.outdoors.in.winter==0 | fulldata$Time.spent.outdoors.in.winter==-10]<-"Less than 1 hour/day"
+fulldata$Time_outdoors_winter[fulldata$Time.spent.outdoors.in.winter==-3 | fulldata$Time.spent.outdoors.in.winter==-1]<-"Do not know or prefer not to say"
+fulldata$Time_outdoors_winter[fulldata$Time.spent.outdoors.in.winter>=1 & fulldata$Time.spent.outdoors.in.winter<7]<-"1-6 hours/day"
+fulldata$Time_outdoors_winter[fulldata$Time.spent.outdoors.in.winter>=7 & fulldata$Time.spent.outdoors.in.winter<13]<-"7-12 hours/day"
+fulldata$Time_outdoors_winter[fulldata$Time.spent.outdoors.in.winter>=13]<-"13+ hours/day"
+```
+
+
+Time spent outdoors (continuous variable)
+```{r}
+#Time spent outdoors in summer (continuous)
+fulldata$Time_outdoors_summer_cont<-fulldata$Time.spent.outdoors.in.summer
+fulldata$Time_outdoors_summer_cont[fulldata$Time_outdoors_summer_cont==-10]<-0.5
+fulldata$Time_outdoors_summer_cont[fulldata$Time_outdoors_summer_cont==-1 | fulldata$Time_outdoors_summer_cont==-3]<-NA
+
+#Time spent outdoors in winter (continuous)
+fulldata$Time_outdoors_winter_cont<-fulldata$Time.spent.outdoors.in.winter
+fulldata$Time_outdoors_winter_cont[fulldata$Time_outdoors_winter_cont==-10]<-0.5
+fulldata$Time_outdoors_winter_cont[fulldata$Time_outdoors_winter_cont==-1 | fulldata$Time_outdoors_winter_cont==-3]<-NA
+
+#Time spent outdoors, averaged over summer and winter (continuous)
+fulldata$Average_time_outdoors <- (fulldata$Time_outdoors_summer_cont + fulldata$Time_outdoors_winter_cont) / 2
+```
+
+
+Disability or infirmity status
+```{r}
+fulldata$Disability<-NA
+fulldata$Disability[fulldata$Disability.or.Infirmity.status==1]<-"Yes"
+fulldata$Disability[fulldata$Disability.or.Infirmity.status==0]<-"No"
+fulldata$Disability[fulldata$Disability.or.Infirmity.status<=-1]<-"Don't know or prefer not to answer"
+```
+
+
+Hearing difficulty status
+```{r}
+fulldata$Hearing_difficulty<-NA
+fulldata$Hearing_difficulty[fulldata$Hearing.Difficulty==99]<-"Completely Deaf"
+fulldata$Hearing_difficulty[fulldata$Hearing.Difficulty==1]<-"Difficulty Hearing"
+fulldata$Hearing_difficulty[fulldata$Hearing.Difficulty==0]<-"No Difficulty"
+fulldata$Hearing_difficulty[fulldata$Hearing.Difficulty<=-1]<-"Don't know or prefer not to answer"
+```
+
+
+Diabetes status
+```{r}
+fulldata$Diabetes<-NA
+fulldata$Diabetes[fulldata$Diabetes.status==1]<-"Yes"
+fulldata$Diabetes[fulldata$Diabetes.status==0]<-"No"
+fulldata$Diabetes[fulldata$Diabetes.status<=-1]<-"Don't know or prefer not to answer"
+```
+
+
+Cancer status
+```{r}
+fulldata$Cancer<-NA
+fulldata$Cancer[fulldata$Cancer.status==1]<-"Yes"
+fulldata$Cancer[fulldata$Cancer.status==0]<-"No"
+fulldata$Cancer[fulldata$Cancer.status<=-1]<-"Don't know or prefer not to answer"
+```
+
+
+Other serious medical condition status
+```{r}
+fulldata$Other_medical_conditions<-NA
+fulldata$Other_medical_conditions[fulldata$Other.serious.medical.condition==1]<-"Yes"
+fulldata$Other_medical_conditions[fulldata$Other.serious.medical.condition==0]<-"No"
+fulldata$Other_medical_conditions[fulldata$Other.serious.medical.condition<=-1]<-"Don't know or prefer not to answer"
+```
+
+
+Educational attainment
+```{r}
+fulldata$Education[fulldata$Education==1]<-"College or University Degree"
+fulldata$Education[fulldata$Education==2]<-"A levels/AS levels or equivalent"
+fulldata$Education[fulldata$Education==3]<-"O levels/General Certificate of Secondary Education or equivalent"
+fulldata$Education[fulldata$Education==4]<-"CSEs or equivalent"
+fulldata$Education[fulldata$Education==5]<-"National Vocational Qualification or equivalent"
+fulldata$Education[fulldata$Education==6]<-"Other professional qualifications"
+fulldata$Education[fulldata$Education==-7]<-"None of the above"
+fulldata$Education[fulldata$Education==-3]<-"Prefer not to answer"
+```
+
+
+Employment status
+```{r}
+fulldata$Employment[fulldata$Employment==1]<-"In paid employment or self-employed"
+fulldata$Employment[fulldata$Employment==2]<-"Retired"
+fulldata$Employment[fulldata$Employment==3]<-"Looking after home and/or family"
+fulldata$Employment[fulldata$Employment==4]<-"Unable to work because of sickness or disability"
+fulldata$Employment[fulldata$Employment==5]<-"Unemployed"
+fulldata$Employment[fulldata$Employment==6]<-"Doing unpaid or voluntary work"
+fulldata$Employment[fulldata$Employment==7]<-"Student"
+fulldata$Employment[fulldata$Employment==-3]<-"Prefer not to answer"
+fulldata$Employment[fulldata$Employment==-7]<-"None of the above"
+```
+
+
+Eye problems (data only available from ~30,000 participants)
+```{r}
+fulldata$Eye_problems<-NA
+fulldata$Eye_problems[fulldata$Eye.problems==1 | fulldata$Eye.problems==2 | fulldata$Eye.problems==3 | fulldata$Eye.problems==4 | fulldata$Eye.problems==5 | fulldata$Eye.problems==6]<-"Yes"
+fulldata$Eye_problems[fulldata$Eye.problems==-7]<-"No"
+fulldata$Eye_problems[fulldata$Eye.problems==-3]<-"Prefer not to answer"
+fulldata$Eye_problems[fulldata$Eye.problems==-1]<-"Do not know"
+```
+
+
+Cardiovascular disease status
+```{r}
+#Cardiovascular Disease
+fulldata$CVD_problems<-NA
+fulldata$CVD_problems[fulldata$CVD.problems==1 |fulldata$CVD.problems==2 | fulldata$CVD.problems==3 |
+                     fulldata$CVD.problems==4]<-"Yes"
+fulldata$CVD_problems[fulldata$CVD.problems==-7]<-"No"
+fulldata$CVD_problems[fulldata$CVD.problems==-3]<-"Prefer not to answer"
+```
+
+
+Blood clots, allergies, and breathing problems status
+```{r}
+fulldata$Clots_Asthma_Allergies<-NA
+fulldata$Clots_Asthma_Allergies[fulldata$Blood.clots.and.breathing.problems==5 | fulldata$Blood.clots.and.breathing.problems==7 |
+                               fulldata$Blood.clots.and.breathing.problems==6 |fulldata$Blood.clots.and.breathing.problems==8 |
+                               fulldata$Blood.clots.and.breathing.problems==9]<-"Yes"
+fulldata$Clots_Asthma_Allergies[fulldata$Blood.clots.and.breathing.problems==-7] <- "No"
+fulldata$Clots_Asthma_Allergies[fulldata$Blood.clots.and.breathing.problems==-3] <- "Prefer not to answer"
+```
+
+
+Alcohol consumption
+```{r}
+fulldata$Alcohol<-NA
+fulldata$Alcohol[fulldata$Alcohol.intake==0]<-"Never"
+fulldata$Alcohol[fulldata$Alcohol.intake==1]<-"Previous drinker"
+fulldata$Alcohol[fulldata$Alcohol.intake==2]<-"Current drinker"
+fulldata$Alcohol[fulldata$Alcohol.intake==-3]<-"Prefer not to answer"
+```
+
+
+Smoking status
+```{r}
+fulldata$Smoking<-NA
+fulldata$Smoking[fulldata$Smoking.Status==0]<-"Never"
+fulldata$Smoking[fulldata$Smoking.Status==1]<-"Previous Smoker"
+fulldata$Smoking[fulldata$Smoking.Status==2]<-"Current Smoker"
+fulldata$Smoking[fulldata$Smoking.Status==-3]<-"Prefer not to answer"
+```
+
+
+Home area population density
+```{r}
+fulldata$Population_density<-NA
+fulldata$Population_density[fulldata$Home.area.population.density==1 | fulldata$Home.area.population.density==5 | 
+                fulldata$Home.area.population.density==11 | fulldata$Home.area.population.density==12]<-"Urban area"
+fulldata$Population_density[fulldata$Home.area.population.density==2 | fulldata$Home.area.population.density==6 | 
+                           fulldata$Home.area.population.density==13]<-"Town"
+fulldata$Population_density[fulldata$Home.area.population.density==3 | fulldata$Home.area.population.density==4 | 
+                           fulldata$Home.area.population.density==7 | fulldata$Home.area.population.density==8 |
+                           fulldata$Home.area.population.density>=14]<-"Village, Hamlet, or Rural Area"
+fulldata$Population_density[fulldata$Home.area.population.density==9]<-"Postcode not linkable" 
+```
+
+
+Bipolar/Depression Status
+```{r}
+fulldata$Bipolar_Depression<-NA
+fulldata$Bipolar_Depression[fulldata$Bipolar.and.depression.status==0]<-"No Bipolar or Depression"
+fulldata$Bipolar_Depression[fulldata$Bipolar.and.depression.status==1 | 
+                           fulldata$Bipolar.and.depression.status==2]<-"Bipolar Disorder"
+fulldata$Bipolar_Depression[fulldata$Bipolar.and.depression.status==3 | 
+                           fulldata$Bipolar.and.depression.status==4]<-"Probable Recurrent Major Depressive Disorder"
+fulldata$Bipolar_Depression[fulldata$Bipolar.and.depression.status==5]<-"Probable Single Major Depressive Episode"
+```
+
+
+Ethnicity/Race
+```{r}
+fulldata$Race<-NA
+fulldata$Race[fulldata$Ethnicity==1001 | fulldata$Ethnicity==1002 | fulldata$Ethnicity==1003]<-"White"
+fulldata$Race[fulldata$Ethnicity==2001 | fulldata$Ethnicity==2002 | fulldata$Ethnicity==2003 | fulldata$Ethnicity==2004]<-"Mixed"
+fulldata$Race[fulldata$Ethnicity==3001 | fulldata$Ethnicity==3002 | fulldata$Ethnicity==3003 | fulldata$Ethnicity==3004]<-"Asian or Asian British"
+fulldata$Race[fulldata$Ethnicity==4001 | fulldata$Ethnicity==4002 | fulldata$Ethnicity==4003]<-"Black or Black British"
+```
+
+
+Age
+```{r}
+fulldata$Age<-fulldata$Baseline.Age
+```
+
+
+Physical Activity Variables
+* Note: Summed_PA_min is PER DAY 
+* Walking, Moderate PA, and Vigorous PA values are MET min/week. IPAQ conversion is: Walking = 3.3 METs, Moderate PA = 4.0 METs, and Vigorous PA = 8.0 METs
+```{r}
+fulldata$Summed_PA_min<-fulldata$Summed.minutes.week.of.PA
+
+fulldata$Summed_walking_min<-fulldata$MET.minutes.week.of.walking
+
+fulldata$Summed_moderate_PA_min<-fulldata$MET.minutes.week.of.moderate.PA
+
+fulldata$Summed_vigorous_PA_min<-fulldata$MET.minutes.week.of.vigorous.PA
+
+fulldata$Summed_PA_MET_min<- (fulldata$Summed_walking_min + fulldata$Summed_moderate_PA_min + fulldata$Summed_vigorous_PA_min)
+```
+
+
+Index of Multiple Deprivation
+```{r}
+fulldata$Deprivation_Index<-NA
+fulldata$Deprivation_Index[!is.na(fulldata$Index.of.multiple.deprivation.England) &
+                          is.na(fulldata$Index.of.multiple.deprivation.Scotland) &   is.na(fulldata$Index.of.multiple.deprivation.Wales)]<-fulldata$Index.of.multiple.deprivation.England
+fulldata$Deprivation_Index[is.na(fulldata$Index.of.multiple.deprivation.England) &
+                          !is.na(fulldata$Index.of.multiple.deprivation.Scotland) &
+is.na(fulldata$Index.of.multiple.deprivation.Wales)]<-fulldata$Index.of.multiple.deprivation.Scotland
+fulldata$Deprivation_Index[is.na(fulldata$Index.of.multiple.deprivation.England) &
+                          is.na(fulldata$Index.of.multiple.deprivation.Scotland) &
+                          !is.na(fulldata$Index.of.multiple.deprivation.Wales)]<-fulldata$Index.of.multiple.deprivation.Wales
+```
+
+
+Neuropsychological testing variables
+* "DSST" actually refers to Symbol Digit (not Digit Symbol) Substitution test
+* For Pairs Matching, index 1 refers to the second round of the test, involving 6 pairs of cards.
+```{r}
+#Pairs Matching Score - this code corrected Jan. 9, 2025
+fulldata$Pairs_matching_correct<-NA
+fulldata$Pairs_matching_correct[!is.na(fulldata$Pairs.Matching.Correct.1)]<-fulldata$Pairs.Matching.Correct.1
+
+fulldata$Pairs_matching_incorrect<-NA
+fulldata$Pairs_matching_incorrect[!is.na(fulldata$Pairs.Matching.Incorrect.1)]<-fulldata$Pairs.Matching.Incorrect.1
+
+#Trails B-A
+fulldata$Trails_B_A<- fulldata$Trails.B.Time - fulldata$Trails.A.Time
+
+
+#Symbol Digit Substitution Score
+fulldata$Symbol.Digit<-fulldata$DSST.Total.Score
+
+#Fluid Intelligence Score
+fulldata$Fluid_intelligence<-fulldata$Fluid.Intellgence.Score
+
+#Numeric Memory Score
+fulldata$Numeric_memory<-fulldata$Numeric.Memory.Score
+```
+
+
+Greenspace and environmental variables (T0)
+```{r}
+#Greenspace percentage
+fulldata$Greenspace_pcnt_1000m<-fulldata$Greenspace.percentage.1000m.0
+fulldata$Greenspace_pcnt_300m<-fulldata$Greenspace.percentage.300m.0
+
+#Natural Environment percentage
+fulldata$Natural_environment_pcnt_1000m<-fulldata$Natural.environment.percentage.1000m.0
+fulldata$Natural_environment_pcnt_300m<-fulldata$Natural.environment.percentage.300m.0
+```
+
+Brain volumes variables (2 timepoints [T2, T3])
+* Using "Volumetric scaling from T1 image to standard space", we calculated HPC volumes adjusted for head size.
+```{r}
+#Grey matter volume (adjusted for head size)
+fulldata$Grey_matter_volume_adjusted_T2<- fulldata$Grey.Matter.Volume..normalized.for.head.size..2
+fulldata$Grey_matter_volume_adjusted_T3<- fulldata$Grey.Matter.Volume..normalized.for.head.size..3
+
+#Grey matter volume (unadjusted)
+fulldata$Grey_matter_volume_unadjusted_T2<- fulldata$Grey.Matter.Volume.unadjusted.2
+fulldata$Grey_matter_volume_unadjusted_T3<- fulldata$Grey.Matter.Volume.unadjusted.3
+
+#White matter volume (adjusted for head size)
+fulldata$White_matter_volume_adjusted_T2<- fulldata$White.Matter.Volume..normalized.for.head.size..2
+fulldata$White_matter_volume_adjusted_T3<- fulldata$White.Matter.Volume..normalized.for.head.size..3
+
+#White matter volume (unadjusted)
+fulldata$White_matter_volume_unadjusted_T2<- fulldata$White.Matter.Volume.unadjusted.2
+fulldata$White_matter_volume_unadjusted_T3<- fulldata$White.Matter.Volume.unadjusted.3
+
+#Total brain volume (adjusted for head size)
+fulldata$Total_brain_volume_adjusted_T2 <- fulldata$Total.brain.volume..normalized.for.head.size..2
+fulldata$Total_brain_volume_adjusted_T3 <- fulldata$Total.brain.volume..normalized.for.head.size..3
+
+#Total brain volume (unadjusted)
+fulldata$Total_brain_volume_adjusted_T2 <- fulldata$Total.brain.volume.unadjusted.2
+fulldata$Total_brain_volume_adjusted_T3 <- fulldata$Total.brain.volume.unadjusted.3
+
+#Hippocampal volume (Left Hemisphere; unadjusted)
+fulldata$L_Hippocampal_volume_T2 <- fulldata$Left.hippocampal.volume.unadjusted.2
+fulldata$L_Hippocampal_volume_T3 <- fulldata$Left.hippocampal.volume.unadjusted.2
+
+#Hippocampal volume (Left Hemisphere; adjusted for head size)
+fulldata$L_Hippocampal_volume_adjusted_T2 <- fulldata$L_Hippocampal_volume_T2 * fulldata$Volumetric.scaling.2
+fulldata$L_Hippocampal_volume_adjusted_T3 <- fulldata$L_Hippocampal_volume_T3 * fulldata$Volumetric.scaling.3
+
+#Hippocampal volume (Right Hemisphere; unadjusted)
+fulldata$R_Hippocampal_volume_T2 <- fulldata$Right.hippocampal.volume.unadjusted.2
+fulldata$R_Hippocampal_volume_T3 <- fulldata$Right.hippocampal.volume.unadjusted.3
+
+#Hippocampal volume (Right Hemisphere; adjusted for head size)
+fulldata$R_Hippocampal_volume_adjusted_T2 <- fulldata$R_Hippocampal_volume_T2 * fulldata$Volumetric.scaling.2
+fulldata$R_Hippocampal_volume_adjusted_T3 <- fulldata$R_Hippocampal_volume_T3 * fulldata$Volumetric.scaling.3
+
+#Average hippocampal volume (unadjusted)
+fulldata$Avg_Hippocampal_volume_T2 <- (fulldata$L_Hippocampal_volume_T2 + fulldata$R_Hippocampal_volume_T2)/2
+fulldata$Avg_Hippocampal_volume_T3 <- (fulldata$L_Hippocampal_volume_T3 + fulldata$R_Hippocampal_volume_T3)/2
+
+#Average hippocampal volume (adjusted for head size)
+fulldata$Avg_Hippocampal_volume_adjusted_T2 <- (fulldata$L_Hippocampal_volume_adjusted_T2 + fulldata$R_Hippocampal_volume_adjusted_T2)/2
+fulldata$Avg_Hippocampal_volume_adjusted_T3 <- (fulldata$L_Hippocampal_volume_adjusted_T3 + fulldata$R_Hippocampal_volume_adjusted_T3)/2
+
+#Total white matter hyperintensity volume
+fulldata$Total_WMH_volume_T2<-fulldata$Total.volume.of.white.matter.hyperintensities.2
+fulldata$Total_WMH_volume_T3<-fulldata$Total.volume.of.white.matter.hyperintensities.3
+```
+
+
+# 3) Determining final data set based on inclusion/exclusion criteria
+
+First, only participants without stroke, Parkinson's, or dementia are included (N=483,664)
+```{r}
+included<-subset(fulldata, grepl("^\\s*$", Stroke.Date) & grepl("^\\s*$", Date.of.All.Cause.Dementia) & grepl("^\\s*$", Date.of.Parkinsons.Disease) &
+                   CVD.problems!=3)
+length(included$ID)
+```
+
+*Note: Counts for "included" and "excluded" do not sum to "fulldata" because missing (NA) values for CVD.problems will return false for both CVD.problems!=3 and CVD.problems==3. Therefore, adjust "included" to also include those with NA for CVD.problems.
+```{r}
+included2<-subset(fulldata, grepl("^\\s*$", Stroke.Date) & grepl("^\\s*$", Date.of.All.Cause.Dementia) & grepl("^\\s*$", Date.of.Parkinsons.Disease) & (CVD.problems!=3 | is.na(CVD.problems)))
+length(included2$ID)
+```
+
+Excluded participants (N=17,863)
+```{r}
+Excluded<-subset(fulldata, !grepl("^\\s*$", Stroke.Date) | !grepl("^\\s*$", Date.of.All.Cause.Dementia) | !grepl("^\\s*$", Date.of.Parkinsons.Disease) |
+                   CVD.problems==3)
+length(Excluded$ID)
+```
+
+
+For the combined cognitive and brain analysis, only participants with complete cognitive and brain data were included (N= 17,494)
+```{r}
+CogsBrain<- subset(included, !is.na(Grey_matter_volume_adjusted_T2) & !is.na(White_matter_volume_adjusted_T2) &
+ !is.na(Avg_Hippocampal_volume_adjusted_T2) &
+                  !is.na(Trails_B_A) & !is.na(Symbol.Digit) &
+                 !is.na(Greenspace.percentage.1000m.0) & !is.na(Greenspace.percentage.300m.0) &
+                  !is.na(Natural.environment.percentage.1000m.0) & !is.na(Natural.environment.percentage.300m.0))
+length(CogsBrain$ID)
+```
+
+
+For the final analytical sample, only participants with complete cognitive, brain, and covariate data were included (N=11,448)
+* Observations were excluded if any values for the above were: NA, "Do not know or prefer not to answer","Do not know or prefer not to say","Don't know or prefer not to answer","Prefer not to answer", "Do not know", "Postcode not linkable".
+```{r}
+#include observations if the values are not missing
+CogsBrainCov <- included[!apply(included[c("Grey_matter_volume_adjusted_T2","White_matter_volume_adjusted_T2","Trails_B_A","Symbol.Digit","Greenspace.percentage.1000m.0","Greenspace.percentage.300m.0","Natural.environment.percentage.1000m.0","Natural.environment.percentage.300m.0","Age","Sex","BMI","Education","Income","Average_time_outdoors","Summed_PA_min","Smoking","Disability","Deprivation_Index","Population_density")], 1, function(row) any(row %in% c("Do not know or prefer not to answer","Do not know or prefer not to say","Don't know or prefer not to answer","Prefer not to answer", "Do not know", "Postcode not linkable") | is.na(row))), ]
+length(CogsBrainCov$ID)
+```
+
+*Adjusted final analytical sample, starting from "included2". Luckily, this leads to the same final sample as that derived from "included", so no further adjustments need to be made.
+```{r}
+#include observations if the values are not missing
+CogsBrainCov2 <- included2[!apply(included2[c("Grey_matter_volume_adjusted_T2","White_matter_volume_adjusted_T2","Trails_B_A","Symbol.Digit","Greenspace.percentage.1000m.0","Greenspace.percentage.300m.0","Natural.environment.percentage.1000m.0","Natural.environment.percentage.300m.0","Age","Sex","BMI","Education","Income","Average_time_outdoors","Summed_PA_min","Smoking","Disability","Deprivation_Index","Population_density")], 1, function(row) any(row %in% c("Do not know or prefer not to answer","Do not know or prefer not to say","Don't know or prefer not to answer","Prefer not to answer", "Do not know", "Postcode not linkable") | is.na(row))), ]
+length(CogsBrainCov2$ID)
+```
+
+Check distribution of missing data across nature exposure, brain structure, cognitive functions, and covariates
+```{r}
+#missing nature exposure
+missingNature <- included2[apply(included2[c("Greenspace.percentage.1000m.0","Greenspace.percentage.300m.0","Natural.environment.percentage.1000m.0","Natural.environment.percentage.300m.0")], 1, function(row) any(row %in% c("Do not know or prefer not to answer","Do not know or prefer not to say","Don't know or prefer not to answer","Prefer not to answer", "Do not know", "Postcode not linkable") | is.na(row))), ]
+length(missingNature$ID)
+
+#missing brain structure
+missingBrain <- included2[apply(included2[c("Grey_matter_volume_adjusted_T2","White_matter_volume_adjusted_T2")], 1, function(row) any(row %in% c("Do not know or prefer not to answer","Do not know or prefer not to say","Don't know or prefer not to answer","Prefer not to answer", "Do not know", "Postcode not linkable") | is.na(row))), ]
+length(missingBrain$ID)
+
+#missing cognitive function
+missingCog <- included2[apply(included2[c("Trails_B_A","Symbol.Digit")], 1, function(row) any(row %in% c("Do not know or prefer not to answer","Do not know or prefer not to say","Don't know or prefer not to answer","Prefer not to answer", "Do not know", "Postcode not linkable") | is.na(row))), ]
+length(missingCog$ID)
+
+#missing covariates
+missingCovars <- included2[apply(included2[c("Age","Sex","BMI","Education","Income","Average_time_outdoors","Summed_PA_min","Smoking","Disability","Deprivation_Index","Population_density")], 1, function(row) any(row %in% c("Do not know or prefer not to answer","Do not know or prefer not to say","Don't know or prefer not to answer","Prefer not to answer", "Do not know", "Postcode not linkable") | is.na(row))), ]
+length(missingCovars$ID)
+```
+
+
+These are the simplified data sets we'll be using for 1) the full data set (i.e., all ~500,000 participants), 2) participants with both cognitive and brain data (N= 17,494), and 3) participants with cognitive, brain, and covariate data (N= 11,448).
+```{r}
+Full.df<-fulldata[c(1,113,4,11,112,94,5,6,108,109,106,107,102,103,101,105,100,111,104,114,115,118,97:99,119,110,122,123,126:129,130,131,134,135,138,139,150:153,91:93,41,43,44)]
+
+CogsBrain.df<-CogsBrain[c(1,113,4,11,112,94,5,6,108,109,106,107,102,103,101,105,100,111,104,114,115,118,97:99,119,110,122,123,126:129,130,131,134,135,138,139,150:153,91:93,41,43,44)]
+
+CogsBrainCov.df<-CogsBrainCov[c(1,113,4,11,112,94,5,6,108,109,106,107,102,103,101,105,100,111,104,114,115,118,97:99,119,110,122,123,126:129,130,131,134,135,138,139,150:153,91:93,41,43,44)]
+
+#Adding the other 3 cognitive function tests
+CogsPlusBrainCov.df <- CogsBrainCov[c(1,113,4,11,112,94,5,6,108,109,106,107,102,103,101,105,100,111,104,114,115,118,97:99,119,110,122,123,124,125,121,126:129,130,131,134,135,138,139,150:153,91:93,41,43,44)]
+```
+
+
+This step creates variable labels that are easy to understand in the data output.
+```{r}
+Full.df = apply_labels(Full.df,
+                       Age = "Age (years)",
+                       BMI = "Body Mass Index (kg/m^2)",
+                       Income = "Household Income",
+                       Time_outdoors_summer_cont = "Time outdoors in the summer (hours/day)",
+                       Time_outdoors_winter_cont = "Time outdoors in the winter (hours/day)",
+                       Average_time_outdoors = "Average time outdoors (hours/day)",
+                       Hearing_difficulty = "Hearing problems",
+                       Eye_problems = "Eye problems",
+                       Disability = "Living with a disability or long-term illness",
+                       Diabetes = "Living with diabetes mellitus",
+                       Cancer = "Living with or previously had cancer",
+                       Other_medical_conditions = "Living with another serious medical condition",
+                       CVD_problems = "Living with cardiovascular disease",
+                       Clots_Asthma_Allergies = "Living with blood clots, allergies, or asthma",
+                       Bipolar_Depression = "Living with Bipolar Disorder or Depression",
+                       Alcohol = "Alcohol drinking status",
+                       Smoking = "Smoking status",
+                       Population_density = "Home area population density",
+                       Summed_PA_min = "Total physical activity (min/day)",
+                       Summed_walking_min = "Total walking (MET min/week)",
+                       Summed_PA_MET_min = "Total physical activity (MET min/week)",
+                       Trails_B_A = "Trail making test (B-A; sec)",
+                       Symbol.Digit = "Symbol digit substitution test (correct matches)",
+                       Greenspace_pcnt_300m = "Greenspace percentage (buffered to 300 meters)",
+                       Greenspace_pcnt_1000m = "Greenspace percentage (buffered to 1000 meters)",
+                       Natural_environment_pcnt_300m = "Natural environment percentage (buffered to 300 meters)",
+                       Natural_environment_pcnt_1000m = "Natural environment percentage (buffered to 1000 meters)",
+                       Deprivation_Index = "Townsend Deprivation Index",
+                       Grey_matter_volume_adjusted_T2 = "Grey matter volume at imaging study entry (adjusted for head size; mm^3)",
+                       Grey_matter_volume_adjusted_T3  = "Grey matter volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       White_matter_volume_adjusted_T2 = "White matter volume at imaging study entry (adjusted for head size; mm^3)",
+                       White_matter_volume_adjusted_T3 = "White matter volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       Avg_Hippocampal_volume_adjusted_T2 = "Average hippocampal volume at imaging study entry (adjusted for head size; mm^3)",
+                       Avg_Hippocampal_volume_adjusted_T3 ="Average hippocampal volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       Total_WMH_volume_T2 = "White matter hyperintensities volume at imaging study entry (mm^3)",
+                       Total_WMH_volume_T3 = "White matter hyperintensities volume at imaging study follow-up (mm^3)"
+)
+
+CogsBrainCov.df = apply_labels(CogsBrainCov.df,
+                       Age = "Age (years)",
+                       BMI = "Body Mass Index (kg/m^2)",
+                       Income = "Household Income",
+                       Time_outdoors_summer_cont = "Time outdoors in the summer (hours/day)",
+                       Time_outdoors_winter_cont = "Time outdoors in the winter (hours/day)",
+                       Average_time_outdoors = "Average time outdoors (hours/day)",
+                       Hearing_difficulty = "Hearing problems",
+                       Eye_problems = "Eye problems",
+                       Disability = "Living with a disability or long-term illness",
+                       Diabetes = "Living with diabetes mellitus",
+                       Cancer = "Living with or previously had cancer",
+                       Other_medical_conditions = "Living with another serious medical condition",
+                       CVD_problems = "Living with cardiovascular disease",
+                       Clots_Asthma_Allergies = "Living with blood clots, allergies, or asthma",
+                       Bipolar_Depression = "Living with Bipolar Disorder or Depression",
+                       Alcohol = "Alcohol drinking status",
+                       Smoking = "Smoking status",
+                       Population_density = "Home area population density",
+                       Summed_PA_min = "Total physical activity (min/day)",
+                       Summed_walking_min = "Total walking (MET min/week)",
+                       Summed_PA_MET_min = "Total physical activity (MET min/week)",
+                       Trails_B_A = "Trail making test (B-A; sec)",
+                       Symbol.Digit = "Symbol digit substitution test (correct matches)",
+                       Greenspace_pcnt_300m = "Greenspace percentage (buffered to 300 meters)",
+                       Greenspace_pcnt_1000m = "Greenspace percentage (buffered to 1000 meters)",
+                       Natural_environment_pcnt_300m = "Natural environment percentage (buffered to 300 meters)",
+                       Natural_environment_pcnt_1000m = "Natural environment percentage (buffered to 1000 meters)",
+                       Deprivation_Index = "Townsend Deprivation Index",
+                       Grey_matter_volume_adjusted_T2 = "Grey matter volume at imaging study entry (adjusted for head size; mm^3)",
+                       Grey_matter_volume_adjusted_T3  = "Grey matter volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       White_matter_volume_adjusted_T2 = "White matter volume at imaging study entry (adjusted for head size; mm^3)",
+                       White_matter_volume_adjusted_T3 = "White matter volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       Avg_Hippocampal_volume_adjusted_T2 = "Average hippocampal volume at imaging study entry (adjusted for head size; mm^3)",
+                       Avg_Hippocampal_volume_adjusted_T3 ="Average hippocampal volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       Total_WMH_volume_T2 = "White matter hyperintensities volume at imaging study entry (mm^3)",
+                       Total_WMH_volume_T3 = "White matter hyperintensities volume at imaging study follow-up (mm^3)"
+)
+
+CogsPlusBrainCov.df = apply_labels(CogsPlusBrainCov.df,
+                       Age = "Age (years)",
+                       BMI = "Body Mass Index (kg/m^2)",
+                       Income = "Household Income",
+                       Time_outdoors_summer_cont = "Time outdoors in the summer (hours/day)",
+                       Time_outdoors_winter_cont = "Time outdoors in the winter (hours/day)",
+                       Average_time_outdoors = "Average time outdoors (hours/day)",
+                       Hearing_difficulty = "Hearing problems",
+                       Eye_problems = "Eye problems",
+                       Disability = "Living with a disability or long-term illness",
+                       Diabetes = "Living with diabetes mellitus",
+                       Cancer = "Living with or previously had cancer",
+                       Other_medical_conditions = "Living with another serious medical condition",
+                       CVD_problems = "Living with cardiovascular disease",
+                       Clots_Asthma_Allergies = "Living with blood clots, allergies, or asthma",
+                       Bipolar_Depression = "Living with Bipolar Disorder or Depression",
+                       Alcohol = "Alcohol drinking status",
+                       Smoking = "Smoking status",
+                       Population_density = "Home area population density",
+                       Summed_PA_min = "Total physical activity (min/day)",
+                       Summed_walking_min = "Total walking (MET min/week)",
+                       Summed_PA_MET_min = "Total physical activity (MET min/week)",
+                       Trails_B_A = "Trail making test (B-A; sec)",
+                       Symbol.Digit = "Symbol digit substitution test (correct matches)",
+                       Fluid_intelligence = "Fluid intelligence (correct answers)",
+                       Numeric_memory = "Numeric memory (maximum digits recalled)",
+                       Pairs_matching_incorrect = "Pairs matching (incorrect matches)",
+                       Greenspace_pcnt_300m = "Greenspace percentage (buffered to 300 meters)",
+                       Greenspace_pcnt_1000m = "Greenspace percentage (buffered to 1000 meters)",
+                       Natural_environment_pcnt_300m = "Natural environment percentage (buffered to 300 meters)",
+                       Natural_environment_pcnt_1000m = "Natural environment percentage (buffered to 1000 meters)",
+                       Deprivation_Index = "Townsend Deprivation Index",
+                       Grey_matter_volume_adjusted_T2 = "Grey matter volume at imaging study entry (adjusted for head size; mm^3)",
+                       Grey_matter_volume_adjusted_T3  = "Grey matter volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       White_matter_volume_adjusted_T2 = "White matter volume at imaging study entry (adjusted for head size; mm^3)",
+                       White_matter_volume_adjusted_T3 = "White matter volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       Avg_Hippocampal_volume_adjusted_T2 = "Average hippocampal volume at imaging study entry (adjusted for head size; mm^3)",
+                       Avg_Hippocampal_volume_adjusted_T3 ="Average hippocampal volume at imaging study follow-up (adjusted for head size; mm^3)",
+                       Total_WMH_volume_T2 = "White matter hyperintensities volume at imaging study entry (mm^3)",
+                       Total_WMH_volume_T3 = "White matter hyperintensities volume at imaging study follow-up (mm^3)"
+)
+```
+
+
+# 4) Compare the complete data set with the final cognitive+brain+covariate data set
+
+This step will summarize participant characteristics for the full data set, as compared to the final analytical data set
+```{r}
+Full.df$included<-"All participants"
+CogsBrain.df$included<-"Participants with both brain and cognitive data" 
+CogsBrainCov.df$included<-"Participants with brain, cognitive, and covariate data"
+
+Tableone.df<-rbind(Full.df,CogsBrainCov.df)
+
+vars<- Tableone.df %>% select(c(2:43,50))
+
+vars %>% tbl_summary(
+  statistic = list(all_continuous() ~ "{mean} ({sd})",
+                   all_categorical() ~ "{n} ({p}%)"),
+  digits = all_continuous() ~ 2,
+  by = included
+)
+```
+
+Table for cognitive+brain+covariate subset, stratified by sex
+```{r}
+tbl_summary(
+  select(CogsBrainCov.df, c(2:43)),
+  by = "Sex", 
+  statistic = list(all_continuous() ~ "{mean} ({sd})",
+                   all_categorical() ~ "{n} ({p}%)"),
+  digits = all_continuous() ~ 2
+) %>%
+  add_p(test = list(all_continuous() ~ "t.test",
+                   all_categorical() ~ "chisq.test"))
+```
+
+# 5) Regression analyses examining the associations of natural environment with cognitive function [subset having cognitive, brain, and covariate data]
+
+First, this step recodes our covariates of interest into scales which are easier to interpret in a regression. Important notes:
+1. Every unit of age represents 10 years above the mean age
+2. Every unit of BMI represents 5 kg/m^2 above the mean BMI
+3. Every unit of natural environment represents a %10 increase in natural environment
+4. Brain volumes are reformatted to cubic centimeters (cm^3)
+5. Education kept as nominal.
+```{r}
+library(dplyr)
+
+CogsBrainCov.df2<-CogsBrainCov.df %>%
+  mutate(Age = scale(Age, scale=FALSE)/10,
+         Sex = recode(Sex,
+                      "Female" = 0.5,
+                      "Male" = -0.5),
+         BMI = scale(BMI, scale=FALSE)/5,
+         Race = recode(Race,
+                       "White" = 0.5,
+                       "Mixed" = -0.5,
+                       "Black or Black British"= -0.5,
+                       "Asian or Asian British"= -0.5),
+         Income = as.numeric(factor(Income,
+                                    levels = c("<18,000 GBP","18,000-30,999 GBP","31,000-51,999 GBP","52,000-100,000 GBP",">100,000 GBP"))),
+         Disability = recode(Disability, 
+                             "Yes" = 1,
+                             "No" = 0),
+         Diabetes = recode(Diabetes,
+                           "Yes" = 1,
+                           "No" = 0),
+         CVD_problems = recode(CVD_problems,
+                               "Yes" = 1,
+                               "No" = 0),
+         Cancer = recode(Cancer,
+                         "Yes" = 1,
+                         "No" = 0),
+         Other_medical_conditions =  recode(Other_medical_conditions,
+                                            "Yes" = 1,
+                                            "No" = 0),
+         Alcohol = as.numeric(factor(Alcohol,
+                                     levels = c("Never","Previous drinker","Current drinker"))),
+         Smoking = as.numeric(factor(Smoking,
+                                     levels = c("Never", "Previous Smoker", "Current Smoker"))),
+         Population_density = as.numeric(factor(Population_density,
+                                                levels = c("Urban area", "Town", "Village, Hamlet, or Rural Area"))),
+         Natural_environment_1000m_10pcnt = Natural_environment_pcnt_1000m/10,
+         Greenspace_1000m_10pcnt = Greenspace_pcnt_1000m/10,
+         Natural_environment_300m_10pcnt = Natural_environment_pcnt_300m/10,
+         Greenspace_300m_10pcnt = Greenspace_pcnt_300m/10,
+         Grey_matter_volume_adjusted_T2_cm3 = Grey_matter_volume_adjusted_T2/1000,
+         White_matter_volume_adjusted_T2_cm3 = White_matter_volume_adjusted_T2/1000,
+         Avg_Hippocampal_volume_adjusted_T2_cm3 = Avg_Hippocampal_volume_adjusted_T2/1000,
+         Total_WMH_volume_T2_cm3 = Total_WMH_volume_T2/1000
+         )
+
+detach(package:dplyr,unload=TRUE)
+```
+
+Repeating above step for separate dataset with the additional cognitive outcomes
+```{r}
+library(dplyr)
+
+CogsPlusBrainCov.df2<-CogsPlusBrainCov.df %>%
+  mutate(Age = scale(Age, scale=FALSE)/10,
+         Sex = recode(Sex,
+                      "Female" = 0.5,
+                      "Male" = -0.5),
+         BMI = scale(BMI, scale=FALSE)/5,
+         Race = recode(Race,
+                       "White" = 0.5,
+                       "Mixed" = -0.5,
+                       "Black or Black British"= -0.5,
+                       "Asian or Asian British"= -0.5),
+         Income = as.numeric(factor(Income,
+                                    levels = c("<18,000 GBP","18,000-30,999 GBP","31,000-51,999 GBP","52,000-100,000 GBP",">100,000 GBP"))),
+         Disability = recode(Disability, 
+                             "Yes" = 1,
+                             "No" = 0),
+         Diabetes = recode(Diabetes,
+                           "Yes" = 1,
+                           "No" = 0),
+         CVD_problems = recode(CVD_problems,
+                               "Yes" = 1,
+                               "No" = 0),
+         Cancer = recode(Cancer,
+                         "Yes" = 1,
+                         "No" = 0),
+         Other_medical_conditions =  recode(Other_medical_conditions,
+                                            "Yes" = 1,
+                                            "No" = 0),
+         Alcohol = as.numeric(factor(Alcohol,
+                                     levels = c("Never","Previous drinker","Current drinker"))),
+         Smoking = as.numeric(factor(Smoking,
+                                     levels = c("Never", "Previous Smoker", "Current Smoker"))),
+         Population_density = as.numeric(factor(Population_density,
+                                                levels = c("Urban area", "Town", "Village, Hamlet, or Rural Area"))),
+         Natural_environment_1000m_10pcnt = Natural_environment_pcnt_1000m/10,
+         Greenspace_1000m_10pcnt = Greenspace_pcnt_1000m/10,
+         Natural_environment_300m_10pcnt = Natural_environment_pcnt_300m/10,
+         Greenspace_300m_10pcnt = Greenspace_pcnt_300m/10,
+         Grey_matter_volume_adjusted_T2_cm3 = Grey_matter_volume_adjusted_T2/1000,
+         White_matter_volume_adjusted_T2_cm3 = White_matter_volume_adjusted_T2/1000,
+         Avg_Hippocampal_volume_adjusted_T2_cm3 = Avg_Hippocampal_volume_adjusted_T2/1000,
+         Total_WMH_volume_T2_cm3 = Total_WMH_volume_T2/1000
+         )
+
+detach(package:dplyr,unload=TRUE)
+```
+
+Define function to get both model summary and confidence interval
+```{r}
+summary_confint <- function(model) {
+  list(summary(model), confint(model))
+  }
+```
+
+Define function for regression model assumption checks
+```{r}
+# Install package for Durbin-Watson test
+options(repos = c(CRAN = "https://cran.r-project.org"))
+install.packages(c("lmtest", "gvlma"))
+library("lmtest")
+library("gvlma")
+
+model_diagnostics <- function(model, bin_width=1) {
+  # Residuals vs. Fitted plot for linearity, normality, equivariance
+  # Normal Q-Q plot for normality
+  # Residuals vs. Leverage plot for influential outliers
+  plot(model, which = c(1,2,5))
+
+  # Histogram of residuals for normality
+  hist(residuals(model), breaks = seq(floor(min(residuals(model))), ceiling(max(residuals(model))), by = bin_width))
+  
+  # Durbin-Watson test for independent errors
+  print(dwtest(model))
+  
+  # Test skewness, kurtosis, equivariance
+  gvlma(model)
+  
+  # Test multicollinearity among predictors (in interaction models) and among covariates?
+  #vif(model)
+}
+```
+
+
+## 5.1) 1000m buffer for natural environment percentage
+
+### 5.1.1) Models for the association of natural environment with trail making test (B-A)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary(lm(Trails_B_A~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+model5b1 <- lm(Trails_B_A~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors +  
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model5b1)
+confint(model5b1,"Natural_environment_1000m_10pcnt") #95% confidence interval
+```
+
+
+Model assumption checks
+```{r}
+model_diagnostics(model5b1)
+
+  # Residuals vs. Fitted plot suggests approximately linear, minor heteroskedasticity
+  # Normal Q-Q plot suggests non-normal skew
+  # Residuals vs. Leverage plot: no outliers of major concern
+  # Histogram of residuals: approximately normal, maybe slight positive skew
+  # Durbin-Watson test near 2 suggests independent residuals
+  # Skewness, Kurtosis, and Heteroskedasticity tests suggest non-normal and heteroskedastic
+```
+
+### 5.1.2) Models for the association of natural environment with Symbol Digit Substitution test
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary(lm(Symbol.Digit~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+model5b2 <- lm(Symbol.Digit~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model5b2)
+confint(model5b2,"Natural_environment_1000m_10pcnt") #95% confidence interval
+```
+
+Line graph illustration of the full adjusted model
+* Note: change of natural environment variable (not divided into 10% increments)
+```{r}
+mdl.3<-resid(lm(Symbol.Digit~Age + Sex + BMI + Education + Income + 
+                  Average_time_outdoors + 
+                  Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+mdl.4<-resid(lm(Natural_environment_pcnt_1000m~Age + Sex + BMI + Education + Income + 
+                  Average_time_outdoors + 
+                  Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+Symbol.Digit.graph<-as.data.frame(cbind(mdl.3,mdl.4))
+Symbol.Digit.graph$mdl.3<-Symbol.Digit.graph$mdl.3 + mean(CogsBrainCov.df2$Symbol.Digit)
+Symbol.Digit.graph$mdl.4<-Symbol.Digit.graph$mdl.4 + mean(CogsBrainCov.df2$Natural_environment_pcnt_1000m)
+
+
+ggplot(data = Symbol.Digit.graph, aes(x = mdl.4, y = mdl.3)) + 
+  labs(x="Natural Environment (%)", y="Symbol Digit Substitution Test (correct matches)")  + geom_smooth(method= 'lm',  se = TRUE, color= 'black') +
+  xlim(0,100) +
+  theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+                     panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+```
+
+Model assumption checks
+```{r}
+model_diagnostics(model5b2)
+
+  # Residuals vs. Fitted plot suggests approximately linear, some heteroskedasticity, 1 outlier
+  # Normal Q-Q plot suggests non-normal skew, 1 outlier
+  # Residuals vs. Leverage plot: 1 clear outlier
+  # Histogram of residuals: approximately normal, slight negative skew
+  # Durbin-Watson test near 2 suggests independent residuals
+  # Skewness, Kurtosis, and Heteroskedasticity tests suggest non-normal but homoskedastic
+```
+
+
+## 5.2) 300m buffer for natural environment percentage
+
+### 5.2.1) Association of natural environment with Trail-making Test (B-A) (not significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary(lm(Trails_B_A~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+Model assumption checks
+```{r}
+model_diagnostics(lm(Trails_B_A~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+  # Residuals vs. Fitted plot 
+  # Normal Q-Q plot 
+  # Residuals vs. Leverage plot
+  # Histogram of residuals
+  # Durbin-Watson test 
+  # Skewness, Kurtosis, and Heteroskedasticity tests 
+```
+
+### 5.2.2) Association of natural environment with Symbol Digit Substitution (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+Model assumption checks
+```{r}
+model_diagnostics(lm(Symbol.Digit~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+  # Residuals vs. Fitted plot 
+  # Normal Q-Q plot 
+  # Residuals vs. Leverage plot
+  # Histogram of residuals
+  # Durbin-Watson test 
+  # Skewness, Kurtosis, and Heteroskedasticity tests 
+```
+
+# 6) Regression analyses examining the association of natural environment with brain volumes [cognitive+brain+covariate subset]
+
+## 6.1) 1000m natural environment buffer
+
+### 6.1.1) Models for the association of natural environment with grey matter volume
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+model6b1 <- lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model6b1)
+confint(model6b1,"Natural_environment_1000m_10pcnt") #95% confidence interval
+```
+
+Line graph illustration of the full adjusted model
+```{r}
+mdl.5b<-resid(lm(Grey_matter_volume_adjusted_T2_cm3~Age + Sex + BMI + Education + Income + 
+                  Average_time_outdoors + 
+                  Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+mdl.6b<-resid(lm(Natural_environment_1000m_10pcnt~Age + Sex + BMI + Education + Income + 
+                  Average_time_outdoors + 
+                  Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+GMV.graph<-as.data.frame(cbind(mdl.5b,mdl.6b))
+GMV.graph$mdl.5b<-GMV.graph$mdl.5b + mean(CogsBrainCov.df2$Grey_matter_volume_adjusted_T2_cm3)
+GMV.graph$mdl.6b<-GMV.graph$mdl.6b*10 + mean(CogsBrainCov.df2$Natural_environment_1000m_10pcnt)*10
+
+
+ggplot(data = GMV.graph, aes(x = mdl.6b, y = mdl.5b)) + 
+  labs(x="Natural Environment (%)", y="Grey Matter Volume (cm^3)")  + geom_smooth(method= 'lm',  se = TRUE, color= 'black') +
+  coord_cartesian(xlim=c(0,100)) +
+  theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+                     panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+```
+
+Model assumption checks
+```{r}
+model_diagnostics(model6b1)
+```
+
+### 6.1.2) Models for the association of natural environment with white matter volume
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+model6b2 <- lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model6b2)
+confint(model6b2,"Natural_environment_1000m_10pcnt") #95% confidence interval
+```
+
+Line graph illustration of the full adjusted model
+```{r}
+mdl.7b<-resid(lm(White_matter_volume_adjusted_T2_cm3~Age + Sex + BMI + Education + Income + 
+                  Average_time_outdoors + 
+                  Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+mdl.8b<-resid(lm(Natural_environment_1000m_10pcnt~Age + Sex + BMI + Education + Income + 
+                  Average_time_outdoors + 
+                  Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+WMV.graph<-as.data.frame(cbind(mdl.7b,mdl.8b))
+WMV.graph$mdl.7b<-WMV.graph$mdl.7b + mean(CogsBrainCov.df2$White_matter_volume_adjusted_T2_cm3)
+WMV.graph$mdl.8b<-WMV.graph$mdl.8b*10 + mean(CogsBrainCov.df2$Natural_environment_1000m_10pcnt)*10
+
+
+ggplot(data = WMV.graph, aes(x = mdl.8b, y = mdl.7b)) + 
+  labs(x="Natural Environment (%)", y="White Matter Volume (cm^3)")  + geom_smooth(method= 'lm',  se = TRUE, color= 'black') +
+  xlim(0,100) +
+  theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+                     panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
+
+```
+
+Model assumption checks
+```{r}
+model_diagnostics(model6b2)
+```
+
+### 6.1.3) Models for the association of natural environment with hippocampal volume
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+model6b3 <- lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model6b3)
+confint(model6b3,"Natural_environment_1000m_10pcnt") #95% confidence interval
+```
+
+Model assumption checks
+```{r}
+model_diagnostics(model6b3)
+```
+
+## 6.2) 300m natural environment buffer
+
+### 6.2.1) Association of natural environment with grey matter volume (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+### 6.2.2) Association of natural environment with white matter volume (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+### 6.2.3) Association of natural environment with hippocampal volume (not significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+### Model assumption checks
+```{r}
+#grey matter
+model_diagnostics(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+#white matter
+model_diagnostics(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+
+#HPC
+model_diagnostics(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+
+# 7) Moderation by sex for cognitive function [cognitive+brain+covariate subset]
+
+## 7.1) 1000m natural environment buffer
+
+### 7.1.1) Trails B-A (not significant)
+```{r}
+model7trail <- lm(Trails_B_A~Natural_environment_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model7trail)
+confint(model7trail,"Natural_environment_1000m_10pcnt:Sex") #95% confidence interval
+```
+
+### Model assumption checks
+```{r}
+#model_diagnostics(model7tmt)
+```
+
+### 7.1.2) Symbol Digit Substitution (not significant)
+```{r}
+model7sds <- lm(Symbol.Digit~Natural_environment_1000m_10pcnt*Sex + Age + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model7sds)
+confint(model7sds,"Natural_environment_1000m_10pcnt:Sex") #95% confidence interval
+```
+
+### Model assumption checks
+```{r}
+#model_diagnostics(model7sds)
+```
+
+## 7.2) 300m nature exposure buffer
+
+### 7.2.1) Moderation by sex: association of natural environment with TMT (B-A) (*significant)
+
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+TMT B-A: Sex-stratified subanalysis
+```{r}
+#stratify sample by sex
+CogsBrainCov.F <- subset(CogsBrainCov.df2,Sex==0.5)
+CogsBrainCov.M <- subset(CogsBrainCov.df2,Sex==-0.5)
+
+#repeat regression within each Sex (ensuring to remove Sex as covariate)
+#Males
+lmM2 <- lm(Trails_B_A ~ Natural_environment_300m_10pcnt + Summed_PA_min + Age + BMI + Education + Income + Average_time_outdoors + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.M)
+summary_confint(lmM2)
+
+#Females
+lmF2 <- lm(Trails_B_A ~ Natural_environment_300m_10pcnt + Summed_PA_min + Age + BMI + Education + Income + Average_time_outdoors + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.F)
+summary_confint(lmF2)
+
+#obtain beta coefficient and standard error for males and females
+F.beta2 <- summary(lmF2)$coefficients["Natural_environment_300m_10pcnt","Estimate"]
+F.se2 <- summary(lmF2)$coefficients["Natural_environment_300m_10pcnt","Std. Error"]
+
+M.beta2 <- summary(lmM2)$coefficients["Natural_environment_300m_10pcnt","Estimate"]
+M.se2 <- summary(lmM2)$coefficients["Natural_environment_300m_10pcnt","Std. Error"]
+
+#calculate Z-score
+Z.nat.tmt <- (M.beta2 - F.beta2) / sqrt(M.se2^2 + F.se2^2)
+p.nat.tmt <- 1 - pnorm(Z.nat.tmt)
+
+#print Z-score and p-value
+Z.nat.tmt
+p.nat.tmt
+```
+
+
+
+
+### Model assumption checks
+```{r}
+#model_diagnostics(lm(Trails_B_A~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+### 7.2.2) Moderation by sex: association of natural environment with Symbol Digit Substitution (not significant)
+
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_300m_10pcnt*Sex + Age + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+### Model assumption checks
+```{r}
+#model_diagnostics(lm(Symbol.Digit~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+
+# 8) Moderation by sex for for brain structure [cognitive+brain+covariate subset]
+
+## 8.1) 1000m natural environment buffer
+
+### 8.1.1) Grey Matter (SIGNIFICANT)
+```{r}
+model8gm <- lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model8gm)
+confint(model8gm,"Natural_environment_1000m_10pcnt:Sex") #95% confidence interval
+```
+
+Grey Matter Graph (no error bars)
+```{r}
+
+#maybe replace this with lmM (2 chunks below), depending on the purpose of scaling
+Males.reg.mean<-lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_pcnt_1000m + Age  + BMI + Education + Income + scale(Average_time_outdoors, TRUE) +
+                        scale(Summed_PA_min, TRUE) +  Smoking + Disability + scale(Deprivation_Index, TRUE) + Population_density, CogsBrainCov.M)
+
+Males.b0 <- round(Males.reg.mean$coeff[1], digits = 3)
+Males.slope <- round(Males.reg.mean$coeff[2], digits = 3)
+Males.ci <- predict(Males.reg.mean, interval = "confidence", level = 0.95)
+
+Females.reg.mean<-lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_pcnt_1000m + Age  + BMI + Education + Income + scale(Average_time_outdoors, TRUE) +
+                     scale(Summed_PA_min, TRUE) +  Smoking + Disability + scale(Deprivation_Index, TRUE) + Population_density, CogsBrainCov.F)
+
+Females.b0 <- round(Females.reg.mean$coeff[1], digits = 3)
+Females.slope <- round(Females.reg.mean$coeff[2], digits = 3)
+Females.ci <- predict(Females.reg.mean, interval = "confidence", level = 0.95)
+
+ggplot() +
+  #add data points but make colour white so invisible
+  #(deleting the points also prevents regression lines from being visible)
+  geom_point(data = CogsBrainCov.df2, aes(x = Natural_environment_pcnt_1000m, y = Grey_matter_volume_adjusted_T2_cm3), shape = 20, size = 0, color = "White") +
+  #add regression lines for each sex
+  geom_abline(aes(intercept= Males.b0, slope = Males.slope, color= "Males"), size = 1) + 
+  geom_abline(aes(intercept = Females.b0, slope = Females.slope, color= "Females"), size = 1) +
+  #add confidence intervals around regression lines for each sex
+  #geom_ribbon(aes(x = CogsBrainCov.M$Natural_environment_pcnt_1000m, ymin = Males.ci[, "lwr"], ymax = Males.ci[,"upr"]), alpha = 0.3) +
+  #geom_ribbon(aes(x = CogsBrainCov.F$Natural_environment_pcnt_1000m, ymin = Females.ci[, "lwr"], ymax = Females.ci[,"upr"]), alpha = 0.3) +
+  #set plot labels, aesthetics, and legend
+  guides(color = guide_legend((title = "Sex"))) + xlab("Natural Environment (%)") +
+  ylab("Grey Matter Volume (cm^3)") + theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+                                                    panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) +
+ coord_cartesian(xlim=c(0,100),ylim=c(780,820))
+```
+
+Alternative Grey Matter Graph: Attempt to add error bands to regression lines
+```{r}
+# Ensure Education is a factor
+CogsBrainCov.M$Education <- as.factor(CogsBrainCov.M$Education)
+CogsBrainCov.F$Education <- as.factor(CogsBrainCov.F$Education)
+
+# Ensure Age and BMI are numeric
+CogsBrainCov.M$Age <- as.numeric(CogsBrainCov.M$Age)
+CogsBrainCov.M$BMI <- as.numeric(CogsBrainCov.M$BMI)
+CogsBrainCov.F$Age <- as.numeric(CogsBrainCov.F$Age)
+CogsBrainCov.F$BMI <- as.numeric(CogsBrainCov.F$BMI)
+
+# Fit the linear regression model
+Males.reg.mean <- lm(Grey_matter_volume_adjusted_T2_cm3 ~ Natural_environment_pcnt_1000m + Age + BMI + Education + Income + scale(Average_time_outdoors) + scale(Summed_PA_min) +  Smoking + Disability + scale(Deprivation_Index) + Population_density, data = CogsBrainCov.M)
+Females.reg.mean <- lm(Grey_matter_volume_adjusted_T2_cm3 ~ Natural_environment_pcnt_1000m + Age + BMI + Education + Income + scale(Average_time_outdoors) + scale(Summed_PA_min) +  Smoking + Disability + scale(Deprivation_Index) + Population_density, data = CogsBrainCov.F)
+
+# Create new data frame for prediction
+new_data_M <- data.frame(
+    Natural_environment_pcnt_1000m = c(1:100),
+    Age = rep(0, 100),
+    BMI = rep(0, 100),
+    Education = factor(rep(levels(CogsBrainCov.M$Education)[1], 100), levels = levels(CogsBrainCov.M$Education)),
+    Income = rep(mean(CogsBrainCov.M$Income, na.rm = TRUE), 100),
+    Average_time_outdoors = rep(mean(CogsBrainCov.M$Average_time_outdoors, na.rm = TRUE), 100),
+    Summed_PA_min = rep(mean(CogsBrainCov.M$Summed_PA_min, 100), 100),
+    Smoking = rep(mean(CogsBrainCov.M$Smoking, na.rm = TRUE), 100),
+    Disability = rep(mean(CogsBrainCov.M$Disability, na.rm = TRUE), 100),
+    Deprivation_Index = rep(mean(CogsBrainCov.M$Deprivation_Index, na.rm = TRUE), 100),
+    Population_density = rep(mean(CogsBrainCov.M$Population_density, na.rm = TRUE), 100)
+)
+new_data_F <- data.frame(
+    Natural_environment_pcnt_1000m = c(1:100),
+    Age = rep(0, 100),
+    BMI = rep(0, 100),
+    Education = factor(rep(levels(CogsBrainCov.F$Education)[1], 100), levels = levels(CogsBrainCov.F$Education)),
+    Income = rep(mean(CogsBrainCov.F$Income, na.rm = TRUE), 100),
+    Average_time_outdoors = rep(mean(CogsBrainCov.F$Average_time_outdoors, na.rm = TRUE), 100),
+    Summed_PA_min = rep(mean(CogsBrainCov.F$Summed_PA_min, 100), 100),
+    Smoking = rep(mean(CogsBrainCov.F$Smoking, na.rm = TRUE), 100),
+    Disability = rep(mean(CogsBrainCov.F$Disability, na.rm = TRUE), 100),
+    Deprivation_Index = rep(mean(CogsBrainCov.F$Deprivation_Index, na.rm = TRUE), 100),
+    Population_density = rep(mean(CogsBrainCov.F$Population_density, na.rm = TRUE), 100)
+)
+
+# Ensure that all variables are of the correct type
+new_data_M$Age <- as.numeric(new_data_M$Age)
+new_data_M$BMI <- as.numeric(new_data_M$BMI)
+new_data_F$Age <- as.numeric(new_data_F$Age)
+new_data_F$BMI <- as.numeric(new_data_F$BMI)
+
+# Get predictions and confidence intervals
+predictions_M <- predict(Males.reg.mean, newdata = new_data_M, interval = "confidence", level = 0.95)
+predictions_F <- predict(Females.reg.mean, newdata = new_data_F, interval = "confidence", level = 0.95)
+
+# Combine predictions with new_data
+new_data_M <- cbind(new_data_M, predictions_M)
+new_data_F <- cbind(new_data_F, predictions_F)
+
+# Plot the data, regression line, and confidence intervals
+ggplot() +
+    geom_line(data = new_data_M, aes(x = Natural_environment_pcnt_1000m, y = fit, color = "Males")) +
+    geom_line(data = new_data_F, aes(x = Natural_environment_pcnt_1000m, y = fit, color = "Females")) +
+    geom_ribbon(data = new_data_M, aes(x = Natural_environment_pcnt_1000m, ymin = lwr, ymax = upr), alpha = 0.2, fill = "Green") +
+    geom_ribbon(data = new_data_F, aes(x = Natural_environment_pcnt_1000m, ymin = lwr, ymax = upr), alpha = 0.2, fill = "Red") +
+    guides(color = guide_legend(title = "Sex")) +
+  labs(x = "Natural Environment (%)", y = "Grey Matter Volume (cm^3)", color =  "Sex") + 
+    theme_classic() 
+```
+
+Alternative Grey Matter Graph: Partial Regression Plot
+```{r}
+#residualize GM volume and natural environment within Males
+M.resid.gm <- resid(lm(Grey_matter_volume_adjusted_T2_cm3~Age + BMI + Education + Income +                          Average_time_outdoors + Summed_PA_min + Smoking + Disability + 
+                         Deprivation_Index + Population_density, CogsBrainCov.M))
+M.resid.nat <- resid(lm(Natural_environment_1000m_10pcnt~Age + BMI + Education + Income + 
+                  Average_time_outdoors + Summed_PA_min + Smoking + Disability + 
+                    Deprivation_Index + Population_density, CogsBrainCov.M))
+
+#residualize GM volume and natural environment within Females
+F.resid.gm <- resid(lm(Grey_matter_volume_adjusted_T2_cm3~Age + BMI + Education + Income +                          Average_time_outdoors + Summed_PA_min + Smoking + Disability + 
+                         Deprivation_Index + Population_density, CogsBrainCov.F))
+F.resid.nat <- resid(lm(Natural_environment_1000m_10pcnt~Age + BMI + Education + Income + 
+                  Average_time_outdoors + Summed_PA_min + Smoking + Disability + 
+                    Deprivation_Index + Population_density, CogsBrainCov.F))
+
+#make data frame of MALE residuals for natural environment and GM volume
+M.resid <- as.data.frame(cbind(M.resid.nat, M.resid.gm))
+#do NOT add the brain and natural environment means to their respective residuals
+
+#make data frame of FEMALE residuals for natural environment and GM volume
+F.resid <- as.data.frame(cbind(F.resid.nat, F.resid.gm))
+# do NOT add the FEMALE brain and cog means to their respective residuals
+
+#Plot the partial regression, including confidence intervals
+ggplot() +
+  #add regression line for females
+  geom_smooth(data = F.resid, aes(x = F.resid.nat*10, y = F.resid.gm, color = "Females"), method = "lm", se = TRUE, fill = "red", alpha = 0.1) +
+  #add regression line for males
+  geom_smooth(data = M.resid, aes(x = M.resid.nat*10, y = M.resid.gm, color = "Males"), method = "lm", se = TRUE, fill = "green", alpha = 0.1) +
+  #set plot labels, aesthetics, and legend
+  labs(x = "Natural Environment (%)", y = "Grey Matter Volume (cm^3)", color = "Sex") +
+  #remove the fill colour from the legend symbols
+  guides(color = guide_legend(override.aes = list(fill = NA))) +
+  #xlim(0,100) +
+  #ylim(785,795) +
+  theme_classic()
+```
+
+Alternative Grey Matter Graph: Partial Regression Plot #2
+```{r}
+#residualize GM volume and natural environment within Males
+M.resid.gm <- resid(lm(Grey_matter_volume_adjusted_T2_cm3~Age + BMI + Education + Income +                          Average_time_outdoors + Summed_PA_min + Smoking + Disability + 
+                         Deprivation_Index + Population_density, CogsBrainCov.M))
+M.resid.nat <- resid(lm(Natural_environment_1000m_10pcnt~Age + BMI + Education + Income + 
+                  Average_time_outdoors + Summed_PA_min + Smoking + Disability + 
+                         Deprivation_Index + Population_density, CogsBrainCov.M))
+
+#residualize GM volume and natural environment within Females
+F.resid.gm <- resid(lm(Grey_matter_volume_adjusted_T2_cm3~Age + BMI + Education + Income +                          Average_time_outdoors + Summed_PA_min + Smoking + Disability + 
+                         Deprivation_Index + Population_density, CogsBrainCov.F))
+F.resid.nat <- resid(lm(Natural_environment_1000m_10pcnt~Age + BMI + Education + Income + 
+                  Average_time_outdoors + Summed_PA_min + Smoking + Disability + 
+                    Deprivation_Index + Population_density, CogsBrainCov.F))
+
+#make data frame of MALE residuals for natural environment and GM volume
+M.resid <- as.data.frame(cbind(M.resid.nat, M.resid.gm))
+#add the MALE brain and natural environment means to their respective residuals
+M.resid$M.resid.gm <- M.resid$M.resid.gm + mean(CogsBrainCov.M$Grey_matter_volume_adjusted_T2_cm3)
+M.resid$M.resid.nat <- M.resid$M.resid.nat*10 + mean(CogsBrainCov.M$Natural_environment_1000m_10pcnt)*10
+
+#make data frame of FEMALE residuals for natural environment and GM volume
+F.resid <- as.data.frame(cbind(F.resid.nat, F.resid.gm))
+#add the FEMALE brain and cog means to their respective residuals
+F.resid$F.resid.gm <- F.resid$F.resid.gm + mean(CogsBrainCov.F$Grey_matter_volume_adjusted_T2_cm3)
+F.resid$F.resid.nat <- F.resid$F.resid.nat*10 + mean(CogsBrainCov.F$Natural_environment_1000m_10pcnt)*10
+
+ggplot() +
+  #add data points for females
+  #geom_point(data = F.resid, aes(x = F.resid.nat, y = F.resid.gm), shape = 20, size = 0, color = "Red") +
+  #add data points for males
+  #geom_point(data = M.resid, aes(x = M.resid.nat, y = M.resid.gm), shape = 3, size = 0, color = "Green") +
+  #add regression line for females
+  geom_smooth(data = F.resid, aes(x = F.resid.nat, y = F.resid.gm, color = "Females"), method = "lm", se = TRUE, fill = "red", alpha = 0.1) +
+  #add regression line for males
+  geom_smooth(data = M.resid, aes(x = M.resid.nat, y = M.resid.gm, color = "Males"), method = "lm", se = TRUE, fill = "green", alpha = 0.2) +
+  #set plot labels, aesthetics, and legend
+  labs(x = "Natural Environment (%)", y = "Grey Matter Volume (cm^3)", color = "Sex") +
+  #remove the fill colour from the legend symbols
+  guides(color = guide_legend(override.aes = list(fill = NA))) +
+  coord_cartesian(xlim=c(0,96), ylim=c(765,815)) +
+  theme_classic()
+
+#What is going wrong with these graphs? Why are the slopes so shallow?
+#Based on the sex-stratified models (below), y-intercept should be 786 for Males and 813 for Females. Why the discrepancy????
+```
+
+Grey matter: Sex-stratified subanalysis
+```{r}
+#repeat regression within each Sex (ensuring to remove Sex as covariate)
+#Males
+lmM <- lm(Grey_matter_volume_adjusted_T2_cm3 ~ Natural_environment_1000m_10pcnt + Summed_PA_min + Age + BMI + Education + Income + Average_time_outdoors + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.M)
+summary(lmM)
+confint(lmM,"Natural_environment_1000m_10pcnt")
+
+#Females
+lmF <- lm(Grey_matter_volume_adjusted_T2_cm3 ~ Natural_environment_1000m_10pcnt + Summed_PA_min + Age + BMI + Education + Income + Average_time_outdoors + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.F)
+summary(lmF)
+confint(lmF,"Natural_environment_1000m_10pcnt")
+
+#obtain beta coefficient and standard error for males and females
+F.beta <- summary(lmF)$coefficients["Natural_environment_1000m_10pcnt","Estimate"]
+F.se <- summary(lmF)$coefficients["Natural_environment_1000m_10pcnt","Std. Error"]
+
+M.beta <- summary(lmM)$coefficients["Natural_environment_1000m_10pcnt","Estimate"]
+M.se <- summary(lmM)$coefficients["Natural_environment_1000m_10pcnt","Std. Error"]
+
+#calculate Z-score
+Z.nat.gm <- (M.beta - F.beta) / sqrt(M.se^2 + F.se^2)
+p.nat.gm <- 1 - pnorm(Z.nat.gm)
+
+#print Z-score and p-value
+Z.nat.gm
+p.nat.gm
+```
+
+
+### 8.1.2) White Matter (not significant)
+```{r}
+model8wm <- lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model8wm)
+confint(model8wm,"Natural_environment_1000m_10pcnt:Sex") #95% confidence interval
+```
+
+
+### 8.1.3) Hippocampal volume (not significant)
+```{r}
+model8hpc <- lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2)
+summary(model8hpc)
+confint(model8hpc,"Natural_environment_1000m_10pcnt:Sex") #95% confidence interval
+```
+
+## Model assumption checks
+```{r}
+model_diagnostics(model8gm)
+  # Residuals vs. Fitted plot suggests approximately linear
+  # Normal Q-Q plot suggests slight non-normal skew
+  # Residuals vs. Leverage plot: no concerning outliers
+  # Histogram of residuals: approximately normal
+  # Durbin-Watson test near 2 suggests independent residuals
+  # Skewness, Kurtosis, and Heteroskedasticity tests suggest non-normal but homoskedastic
+
+model_diagnostics(model8wm)
+  # Residuals vs. Fitted plot suggests approximately linear, some heteroskedasticity, 1 outlier
+  # Normal Q-Q plot suggests non-normal skew
+  # Residuals vs. Leverage plot: no concerning outliers
+  # Histogram of residuals: approximately normal
+  # Durbin-Watson test near 2 suggests independent residuals
+  # Skewness, Kurtosis, and Heteroskedasticity tests suggest non-normal but homoskedastic
+
+model_diagnostics(model8hpc, bin_width=0.1)
+  # Residuals vs. Fitted plot suggests approximately linear, some heteroskedasticity, 1 outlier
+  # Normal Q-Q plot suggests non-normal kurtosis
+  # Residuals vs. Leverage plot: a few outliers
+  # Histogram of residuals: approximately normal
+  # Durbin-Watson test near 2 suggests independent residuals
+  # Skewness, Kurtosis, and Heteroskedasticity tests suggest non-normal but homoskedastic
+```
+
+
+## 8.2) 300m natural environment buffer
+
+### 8.2.1) Moderation by sex: Grey Matter (significant)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+Grey matter: Sex-stratified subanalysis
+```{r}
+#repeat regression within each Sex (ensuring to remove Sex as covariate)
+#Males
+lmM <- lm(Grey_matter_volume_adjusted_T2_cm3 ~ Natural_environment_300m_10pcnt + Summed_PA_min + Age + BMI + Education + Income + Average_time_outdoors + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.M)
+summary(lmM)
+confint(lmM,"Natural_environment_300m_10pcnt")
+
+#Females
+lmF <- lm(Grey_matter_volume_adjusted_T2_cm3 ~ Natural_environment_300m_10pcnt + Summed_PA_min + Age + BMI + Education + Income + Average_time_outdoors + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.F)
+summary(lmF)
+confint(lmF,"Natural_environment_300m_10pcnt")
+
+#obtain beta coefficient and standard error for males and females
+F.beta <- summary(lmF)$coefficients["Natural_environment_300m_10pcnt","Estimate"]
+F.se <- summary(lmF)$coefficients["Natural_environment_300m_10pcnt","Std. Error"]
+
+M.beta <- summary(lmM)$coefficients["Natural_environment_300m_10pcnt","Estimate"]
+M.se <- summary(lmM)$coefficients["Natural_environment_300m_10pcnt","Std. Error"]
+
+#calculate Z-score
+Z.nat.gm <- (M.beta - F.beta) / sqrt(M.se^2 + F.se^2)
+p.nat.gm <- 1 - pnorm(Z.nat.gm)
+
+#print Z-score and p-value
+Z.nat.gm
+p.nat.gm
+```
+
+
+### 8.2.2) Moderation by sex: White Matter (not significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+### 8.2.3) Moderation by sex: Average hippocampal volume (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+
+# 9) Sensitivity analyses for cognitive function
+
+## 9.1) Greenspace percentage instead of natural environment percentage
+
+### 9.1.1) 1000m greenspace buffer
+
+#### Association of greenspace (buffered to 1000m) with Trail-making Test (B-A) (not significant)
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Trails_B_A~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Trails_B_A~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+
+#### Association of greenspace (buffered to 1000m) with Symbol Digit Substitution (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Symbol.Digit~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Symbol.Digit~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+
+#### Moderation by sex: association of greenspace (buffered to 1000m) with TMT (B-A) (not significant)
+
+```{r}
+summary_confint(lm(Trails_B_A~Greenspace_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: association of greenspace (buffered to 1000m) with Symbol Digit Substitution (not significant)
+```{r}
+summary_confint(lm(Symbol.Digit~Greenspace_1000m_10pcnt*Sex + Age + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+### 9.1.2) 300m greenspace buffer
+
+#### Association of greenspace (buffered to 300m) with Trail-making Test (B-A) (not significant)
+```{r}
+summary_confint(lm(Trails_B_A~Greenspace_300m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Association of greenspace (buffered to 300m) with Symbol Digit Substitution (not significant)
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Symbol.Digit~Greenspace_300m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: association of greenspace (buffered to 300m) with TMT (B-A) (not significant)
+```{r}
+summary_confint(lm(Trails_B_A~Greenspace_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: association of greenspace (buffered to 300m) with Symbol Digit Substitution (not significant)
+```{r}
+summary_confint(lm(Symbol.Digit~Greenspace_300m_10pcnt*Sex + Age + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+
+## 9.2) Restrict sample to participants with no change in home location between baseline (2006–2010) and online cognitive assessment (2014-2015, individual-specific dates)
+
+Required UKB variables:
+* 699 - Length of time at current address - Instances 0 and 2 (unit: years)
+* 53 - Date of attending assessment centre - Instances 0 and 2 (format: YYYY-MM-DD)
+Approach: Include if var 699 (Instance) >= Difference in 53 (Instance 2 minus Instance 0)
+Note: This is a conservative estimate of the subset of participants with no change in home address between baseline and 2014-2015. We were unable to use the actual dates of the online cognitive assessment (var 20136 and 20137; below) because variable 699 was not collected at the same time as the online cognitive assessment; the nearest time at which variable 699 was collected is Instance 2.
+* 20136 - When trail making test completed
+* 20137 - When symbol digit substitution test completed
+
+```{r}
+#convert dates to date data type
+CogsBrainCov.df2$Date_attending_centre_0 <- as.Date(CogsBrainCov.df2$Date.attending.centre.0)
+CogsBrainCov.df2$Date_attending_centre_2 <- as.Date(CogsBrainCov.df2$Date.attending.centre.2)
+CogsBrainCov.df2$Date_attending_centre_3 <- as.Date(CogsBrainCov.df2$Date.attending.centre.3)
+
+#include only observations with no missing data for Var 699 and Var 53
+HomeChangeTest_T2 <- subset(CogsBrainCov.df2, !is.na(Date_attending_centre_0) & !is.na(Date_attending_centre_2) & !is.na(Time_at_current_address_T2))
+length(HomeChangeTest_T2$ID)
+#include only observations with no change in address between T2 and T0
+NoHomeChange_T2 <- subset(HomeChangeTest_T2,Time_at_current_address_T2 >= (round(as.numeric(Date_attending_centre_2 - Date_attending_centre_0) / 365, digits = 0)))
+  #more stringent version, where time difference between T2 and T0 is not rounded:
+  # NoHomeChange_T2 <- subset(HomeChangeTest_T2,Time_at_current_address_T2 >= (as.numeric(Date_attending_centre_2 - Date_attending_centre_0) / 365, digits = 0))
+length(NoHomeChange_T2$ID)
+```
+
+### Compare the analytical cognitive+brain+covariate data set to the restricted data set with no change in home location
+```{r eval= FALSE}
+#use CogsBrainCov.df because variables (such as age, BMI, natural environment) are not yet re-scaled
+
+#convert dates to date data type
+CogsBrainCov.df$Date_attending_centre_0 <- as.Date(CogsBrainCov.df$Date.attending.centre.0)
+CogsBrainCov.df$Date_attending_centre_2 <- as.Date(CogsBrainCov.df$Date.attending.centre.2)
+CogsBrainCov.df$Date_attending_centre_3 <- as.Date(CogsBrainCov.df$Date.attending.centre.3)
+
+#include only observations with no missing data for Var 699 and Var 53
+HomeChangeTest_T2_unscaled <- subset(CogsBrainCov.df, !is.na(Date_attending_centre_0) & !is.na(Date_attending_centre_2) & !is.na(Time_at_current_address_T2))
+
+#include only observations with no change in address between T2 and T0
+NoHomeChange_T2_unscaled <- subset(HomeChangeTest_T2_unscaled,Time_at_current_address_T2 >= (round(as.numeric(Date_attending_centre_2 - Date_attending_centre_0) / 365, digits = 0)))
+
+NoHomeChange_T2_unscaled$included<-"Participants with no change in home location"
+
+AnalyticalVsNoHomeChange<-rbind(CogsBrainCov.df, NoHomeChange_T2_unscaled)
+
+vars2<- subset(AnalyticalVsNoHomeChange, select = c(2:44, 49))
+
+vars2 %>% tbl_summary(
+  statistic = list(all_continuous() ~ "{mean} ({sd})",
+                   all_categorical() ~ "{n} ({p}%)"),
+  digits = all_continuous() ~ 2,
+  by = "included"
+)
+```
+
+Table for restricted sample with no change in home location, stratified by sex
+```{r eval= FALSE}
+library(dplyr)
+
+tbl_summary(
+  select(NoHomeChange_T2_unscaled, c(2:43)),
+  by = "Sex", 
+  statistic = list(all_continuous() ~ "{mean} ({sd})",
+                   all_categorical() ~ "{n} ({p}%)"),
+  digits = all_continuous() ~ 2
+) %>%
+  add_p(test = list(all_continuous() ~ "t.test",
+                   all_categorical() ~ "chisq.test"))
+```
+
+### 9.2.1) 1000m natural environment buffer
+
+#### Association of natural environment with Trail-making Test (B-A) (not significant)
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, NoHomeChange_T2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+
+#### Association of natural environment with Symbol Digit Substitution (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, NoHomeChange_T2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: association of natural environment with TMT (B-A) (not significant)
+
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: association of natural environment with Symbol Digit Substitution (not significant)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_1000m_10pcnt*Sex + Age + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+### 9.2.2) 300m natural environment buffer
+
+
+#### Association of natural environment (300m buffer) with Trail-making Test (B-A)
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Association of natural environment (300m buffer) with Symbol Digit Substitution
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: association of natural environment (300m buffer) with TMT (B-A)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: association of natural environment (300m buffer) with Symbol Digit Substitution
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_300m_10pcnt*Sex + Age + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+
+# 10) Sensitivity analyses for brain volumes
+
+## 10.1) Greenspace percentage instead of natural environment percentage
+
+### 10.1.1) 1000m greenspace buffer
+
+#### Association of greenspace (buffered to 1000m) with grey matter volume (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Association of greenspace (buffered to 1000m) with white matter volume (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+
+#### Association of greenspace (buffered to 1000m) with hippocampal volume (not significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income, CogsBrainCov.df2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Grey Matter (significant)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: White Matter (not significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Average hippocampal volume (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Greenspace_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+
+### 10.1.2) 300m greenspace buffer
+
+#### Association of greenspace (buffered to 300m) with grey matter volume (significant)
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Greenspace_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Association of greenspace (buffered to 300m) with white matter volume (significant)
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Greenspace_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Association of greenspace (buffered to 300m) with hippocampal volume (not significant)
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Greenspace_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Grey Matter [Greenspace AND 300m buffer] (significant)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Greenspace_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: White Matter [Greenspace AND 300m buffer] (not significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Greenspace_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Average hippocampal volume [Greenspace AND 300m buffer] (not significant) (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Greenspace_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, CogsBrainCov.df2))
+```
+
+## 10.2) Restrict sample to participants with no change in home location between baseline (2006–2010) and first MRI assessment (2014+)
+
+Required UKB variables:
+* 699 - Length of time at current address - Instances 2 (measured in units of whole years, except if answer was < 1 year, in which case the value assigned was 0.5 years)
+* 53 - Date of attending assessment centre - Instances 0 and 2 (format: YYYY-MM-DD)
+Approach: Include if var 699 (Instance 2) >= Difference in 53 (Instance 2 minus Instance 0)
+Note: This subset, "NoHomeChange_T2", was generated in Section 10.3.
+
+### 10.2.1) 1000m natural environment buffer
+
+#### Association of natural environment with grey matter volume (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, NoHomeChange_T2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Association of natural environment with white matter volume (significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, NoHomeChange_T2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Association of natural environment with hippocampal volume (not significant)
+
+Crude model (Covariates: Age, Sex, BMI, Education, and Income)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income, NoHomeChange_T2))
+```
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: Grey Matter (*not significant, p = 0.054)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: White Matter (not significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: Average hippocampal volume (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+### 10.2.2) 300m natural environment buffer
+
+#### Association of natural environment with grey matter volume (300m buffer AND restricted sample)
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Association of natural environment with white matter volume (300m buffer AND restricted sample)
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Association of natural environment with average hippocampal volume (300m buffer AND restricted sample)
+
+Full adjusted model (Covariates: Age, Sex, BMI, Education, Income, Average time spent outdoors, Physical activity minutes, Smoking status, Disability status, Townsend Deprivation Index, and Population Density)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + BMI + Education + Income + Average_time_outdoors + Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: Grey Matter [300m buffer AND subset with no address change] (significant)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+
+#### Moderation by sex: White Matter [300m buffer AND subset with no address change] (not significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+#### Moderation by sex: Average hippocampal volume [300m buffer AND subset with no address change] (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age  + BMI + Education + Income + 
+             Average_time_outdoors + 
+             Summed_PA_min + Smoking + Disability + Deprivation_Index + Population_density, NoHomeChange_T2))
+```
+
+
+# 12) Crude models requested by Reviewer 2: using only 3 covariates: age, sex, and ethnic background
+
+## 12.1) 1000m buffer
+
+### 12.1.1) Cognitive Function
+
+#### Association of natural environment with Trail-making Test B-A (not significant)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_1000m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Association of natural environment with Symbol Digit Substitution (significant)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_1000m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Trail-making Test B-A (not significant)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_1000m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Symbol Digit Substitution (not significant)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_1000m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+### 12.1.2) Brain Volume
+
+#### Association of natural environment with grey matter volume (significant)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Association of natural environment with white matter volume (significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Association of natural environment with hippocampal volume (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Grey Matter (significant)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: White Matter (not significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Average hippocampal volume (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_1000m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+## 12.2) 300m buffer
+
+### 12.2.1) Cognitive Function
+
+#### Association of natural environment with Trail-making Test B-A (not significant)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_300m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Association of natural environment with Symbol Digit Substitution (significant)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_300m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Trail-making Test B-A (not significant)
+```{r}
+summary_confint(lm(Trails_B_A~Natural_environment_300m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Symbol Digit Substitution (not significant)
+```{r}
+summary_confint(lm(Symbol.Digit~Natural_environment_300m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+### 12.2.2) Brain Volume
+
+#### Association of natural environment with grey matter volume (significant)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Association of natural environment with white matter volume (significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Association of natural environment with hippocampal volume (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt + Age + Sex + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Grey Matter (significant)
+```{r}
+summary_confint(lm(Grey_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: White Matter (not significant)
+```{r}
+summary_confint(lm(White_matter_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
+
+#### Moderation by sex: Average hippocampal volume (not significant)
+```{r}
+summary_confint(lm(Avg_Hippocampal_volume_adjusted_T2_cm3~Natural_environment_300m_10pcnt*Sex + Age + Race, CogsBrainCov.df2))
+```
